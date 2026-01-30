@@ -1,0 +1,6 @@
+# User configuration - overrides default.yaml
+# Uncomment and modify as needed
+
+# voice:
+#   wake_word:
+#     porcupine_access_key: "your-key-here"

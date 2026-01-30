@@ -1,0 +1,91 @@
+# JARVIS AI Assistant - Default Configuration
+# Copy this to user.yaml to customize
+
+core:
+  name: "Jarvis"
+  wake_words:
+    - "jarvis"
+    - "hey jarvis"
+  language: "en-US"
+  data_dir: "data"
+
+voice:
+  enabled: true
+  
+  wake_word:
+    engine: "porcupine"  # porcupine, simple
+    sensitivity: 0.5
+    porcupine_access_key: ""  # Get from https://console.picovoice.ai/
+  
+  stt:
+    engine: "google"  # whisper, vosk, google
+    whisper_model: "whisper-1"
+    vosk_model_path: "models/vosk-model-small-en-us"
+    language: "en"
+  
+  tts:
+    engine: "pyttsx3"  # pyttsx3, gtts, espeak
+    voice: null  # null for default
+    rate: 175
+    volume: 0.9
+  
+  audio:
+    sample_rate: 16000
+    channels: 1
+    chunk_size: 1024
+    input_device: null  # null for auto-detect
+    output_device: null
+
+ai:
+  llm:
+    provider: "anthropic"  # anthropic, ollama, openai
+    model: "claude-3-5-sonnet-20241022"
+    ollama_model: "llama3.2"
+    ollama_host: "http://localhost:11434"
+    temperature: 0.7
+    max_tokens: 1024
+  
+  context:
+    max_history: 20
+    max_tokens: 4096
+  
+  memory:
+    enabled: true
+    database: "data/memory.db"
+
+security:
+  require_confirmation:
+    - "delete"
+    - "remove"
+    - "shutdown"
+    - "reboot"
+  
+  blocked_commands:
+    - "rm -rf /"
+    - "dd if=/dev/zero"
+    - ":(){:|:&};:"
+  
+  sandbox_enabled: true
+
+plugins:
+  enabled: true
+  directory: "jarvis/plugins"
+  autoload:
+    - "system_control"
+    - "file_manager"
+    - "timer"
+    - "shell"
+    - "web_search"
+
+web:
+  enabled: true
+  host: "0.0.0.0"
+  port: 8000
+  cors_origins:
+    - "*"
+
+logging:
+  level: "INFO"
+  file: "data/logs/jarvis.log"
+  rotation: "10 MB"
+  retention: "7 days"

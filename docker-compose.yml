@@ -1,0 +1,51 @@
+# JARVIS AI Assistant - Docker Compose
+# =====================================
+# Run: docker-compose up -d
+
+services:
+  jarvis:
+    build: .
+    container_name: jarvis-ai
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./config:/app/config:ro
+      - ./data:/app/data
+      - ./.env:/app/.env:ro
+    environment:
+      - JARVIS_LOG_LEVEL=INFO
+    networks:
+      - jarvis-net
+    # For voice mode, uncomment the following:
+    # devices:
+    #   - /dev/snd:/dev/snd
+    # group_add:
+    #   - audio
+
+  # Optional: Ollama for local LLM
+  ollama:
+    image: ollama/ollama:latest
+    container_name: jarvis-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    networks:
+      - jarvis-net
+    # Uncomment for GPU support
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+
+networks:
+  jarvis-net:
+    driver: bridge
+
+volumes:
+  ollama-data:
