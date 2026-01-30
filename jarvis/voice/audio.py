@@ -88,6 +88,12 @@ class AudioManager:
         if selected is not None:
             info = self._pyaudio.get_device_info_by_index(selected)
             logger.info(f"Selected input device: {info['name']}")
+            
+            # Update sample rate to match device's native rate
+            device_rate = int(info['defaultSampleRate'])
+            if device_rate != self.sample_rate:
+                logger.info(f"Adjusting sample rate from {self.sample_rate} to {device_rate} for device compatibility")
+                self.sample_rate = device_rate
         
         return selected
     
