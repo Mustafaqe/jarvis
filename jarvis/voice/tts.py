@@ -279,20 +279,50 @@ def create_tts_engine(config) -> TTSEngine:
     """
     Factory function to create appropriate TTS engine.
     
+    Supports:
+    - coqui: Natural voice with VITS/XTTS models (free, local)
+    - elevenlabs: Premium voice quality (requires API key)
+    - pyttsx3: Offline, cross-platform (legacy)
+    - gtts: Google TTS online (legacy)
+    - espeak: Offline, Linux (legacy)
+    
     Args:
         config: Configuration object
         
     Returns:
         TTSEngine instance
     """
-    engine = config.get("voice.tts.engine", "pyttsx3")
+    engine = config.get("voice.tts.engine", "coqui")
     
-    if engine == "pyttsx3":
+    # Natural TTS engines (recommended)
+    if engine == "coqui":
+        try:
+            from jarvis.voice.natural_tts import CoquiTTS
+            return CoquiTTS(config)
+        except ImportError as e:
+            logger.warning(f"Coqui TTS not available: {e}, falling back to pyttsx3")
+            return Pyttsx3TTS(config)
+    
+    elif engine == "elevenlabs":
+        try:
+            from jarvis.voice.natural_tts import ElevenLabsTTS
+            return ElevenLabsTTS(config)
+        except ImportError as e:
+            logger.warning(f"ElevenLabs not available: {e}, falling back to pyttsx3")
+            return Pyttsx3TTS(config)
+    
+    # Legacy engines
+    elif engine == "pyttsx3":
         return Pyttsx3TTS(config)
     elif engine == "gtts":
         return GTTS_TTS(config)
     elif engine == "espeak":
         return EspeakTTS(config)
     
-    # Default to pyttsx3
-    return Pyttsx3TTS(config)
+    # Default to Coqui with fallback
+    logger.warning(f"Unknown TTS engine '{engine}', trying Coqui")
+    try:
+        from jarvis.voice.natural_tts import CoquiTTS
+        return CoquiTTS(config)
+    except ImportError:
+        return Pyttsx3TTS(config)

@@ -1,120 +1,134 @@
 # JARVIS AI Assistant
 
-> AI-Powered Voice Assistant for Linux
+> **Distributed AI-Powered Voice Assistant for Linux**
 
-![Version](https://img.shields.io/badge/version-0.1.0-blue)
-![Python](https://img.shields.io/badge/python-3.10+-green)
+![Version](https://img.shields.io/badge/version-0.2.0-blue)
+![Python](https://img.shields.io/badge/python-3.14+-green)
 ![License](https://img.shields.io/badge/license-MIT-orange)
+![Status](https://img.shields.io/badge/status-beta-yellow)
 
-JARVIS is a comprehensive AI assistant for Linux featuring:
-- 🎤 **Voice Interaction** - Wake word detection, speech-to-text, text-to-speech
-- 🤖 **AI Integration** - Claude API and Ollama (local LLM) support
-- ⚡ **System Control** - Monitor CPU, memory, disk; launch apps
-- 🔌 **Plugin System** - Extensible architecture for new capabilities
-- 🌐 **Web Dashboard** - Modern web interface for remote control
+JARVIS is a production-grade, distributed AI assistant designed for local privacy and total system control. It operates as a central "brain" server that orchestrates multiple client PCs, enabling seamless voice interaction, screen analysis, and automation across your entire home network.
+
+## Key Features
+
+*   **🧠 Distributed Architecture**: Central AI server controlling multiple lightweight clients.
+*   **🔒 Local & Private**: 100% local operation with Ollama (LLM) and local STT/TTS. No cloud dependencies.
+*   **🛡️ Secure Communication**: gRPC with mTLS (Mutual TLS) encryption and authentication.
+*   **👁️ Computer Vision**: Real-time screen analysis and context awareness.
+*   **🤖 Autonomous Agents**: Multi-step task planning, pattern learning, and proactive suggestions.
+*   **🗣️ Voice Interaction**: Fast, natural voice control with wake word detection.
+*   **🔌 IoT Integration**: Built-in MQTT broker and Home Assistant support.
+*   **🐳 Easy Deployment**: Docker-based stack with systemd integration.
 
 ## Quick Start
 
+### 1. Installation
+
+Clone the repository and run the setup script:
+
 ```bash
-# Clone and install
-cd jarvis-opus
-chmod +x install.sh
-./install.sh
+git clone https://github.com/sukeesh/Jarvis.git
+cd Jarvis/jarvis-opus
+chmod +x setup.sh
+./setup.sh
+```
 
-# Configure API keys
-nano .env  # Add your keys
+The interactive setup script will guide you through:
+*   Choosing **Server** or **Client** mode
+*   Installing system dependencies
+*   Generating certificates (PKI)
+*   Configuring the system
+*   Setting up systemd services
 
-# Run
+### 2. Manual Run
+
+**Server Mode:**
+```bash
 source venv/bin/activate
-python main.py --mode cli
+python main.py --mode server
 ```
 
-## Modes
-
-| Mode | Command | Description |
-|------|---------|-------------|
-| CLI | `python main.py --mode cli` | Text-based terminal interface |
-| Voice | `python main.py --mode voice` | Voice-activated assistant |
-| Web | `python main.py --mode web` | Web dashboard at localhost:8000 |
-
-## Example Commands
-
-```
-"Hey Jarvis, what's my CPU usage?"
-"Open Firefox"
-"Set a timer for 5 minutes"
-"Search for Python tutorials"
-"Find files named report"
-"What time is it?"
-```
-
-## Configuration
-
-### API Keys
-
-Create a `.env` file:
+**Client Mode:**
 ```bash
-ANTHROPIC_API_KEY=your-key-here      # For Claude LLM
-JARVIS_PORCUPINE_ACCESS_KEY=key      # For wake word (optional)
+source venv/bin/activate
+python main.py --mode client --server-host <SERVER_IP>
 ```
 
-### Custom Settings
+### 3. Docker Deployment
 
-Edit `config/user.yaml` to override defaults:
-```yaml
-ai:
-  llm:
-    provider: "ollama"  # Use local LLM
-    ollama_model: "llama3.2"
+Deploy the full stack (Server + Ollama + MQTT):
 
-voice:
-  tts:
-    engine: "espeak"
-    rate: 150
+```bash
+docker-compose up -d
 ```
 
 ## Architecture
 
+JARVIS uses a modular, event-driven architecture:
+
 ```
-jarvis-opus/
-├── main.py              # Entry point
-├── jarvis/
-│   ├── core/            # Engine, events, config, security
-│   ├── voice/           # Wake word, STT, TTS, audio
-│   ├── ai/              # LLM integration, intent detection
-│   ├── plugins/         # System control, files, timer, etc.
-│   └── interface/       # CLI and web interfaces
-├── config/              # YAML configuration
-└── data/                # Logs, database, models
+┌──────────────┐      mTLS/gRPC       ┌──────────────┐
+│  JARVIS      │ ◄──────────────────► │  JARVIS      │
+│  Server      │                      │  Client      │
+│  (AI Brain)  │ ◄──────────────────► │  (Endpoint)  │
+└──────┬───────┘      WebSocket       └──────────────┘
+       │
+       ▼
+┌──────────────┐
+│  Web         │
+│  Dashboard   │
+└──────────────┘
 ```
 
-## Plugins
+*   **Core**: Event bus, configuration, security manager.
+*   **Network**: gRPC server/client, mTLS, discovery (Zeroconf), IoT (MQTT).
+*   **AI**: Task planner, context aggregator, pattern learner, LLM integration.
+*   **Voice**: Wake word (Porcupine), STT (Faster-Whisper), TTS (Piper/Espeak).
+*   **Vision**: Screen capture, OCR, object detection.
 
-| Plugin | Capabilities |
-|--------|--------------|
-| System Control | CPU/memory/disk monitoring, app launcher |
-| File Manager | Search, list, open files |
-| Timer | Timers, reminders, alarms |
-| Shell | Safe command execution |
-| Web Search | DuckDuckGo search |
+## Documentation
 
-## Docker
+*   [Distributed Architecture Guide](docs/distributed.md)
+*   [API Reference](docs/api.md) (Coming Soon)
+*   [Plugin Development](docs/plugins.md) (Coming Soon)
 
-```bash
-# Build and run
-docker-compose up -d
+## Configuration
 
-# View logs
-docker-compose logs -f jarvis
+Configuration is managed via `config/user.yaml`.
+
+**Example Server Config:**
+```yaml
+network:
+  mode: "server"
+  discovery:
+    enabled: true
+  tls:
+    enabled: true
+    require_client_cert: true
+
+ai:
+  llm:
+    provider: "ollama"
+    model: "llama3.2"
+```
+
+**Example Client Config:**
+```yaml
+network:
+  mode: "client"
+  server_host: "192.168.1.100"
+  client:
+    id: "living-room-pc"
 ```
 
 ## Requirements
 
-- Python 3.10+
-- Linux (Ubuntu, Arch, Fedora)
-- Microphone (for voice mode)
-- Optional: Ollama for local LLM
+*   **OS**: Linux (Ubuntu, Fedora, Arch)
+*   **Python**: 3.12+
+*   **Hardware**: 
+    *   Server: 16GB+ RAM recommended for local LLMs.
+    *   Client: Lightweight, runs on any PC or Raspberry Pi 4+.
 
 ## License
 
-MIT License - see LICENSE file.
+MIT License - see [LICENSE](LICENSE) file.

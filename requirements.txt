@@ -6,10 +6,30 @@ ollama>=0.4.0
 # Voice processing
 pvporcupine>=3.0.0
 pyaudio>=0.2.14
+sounddevice>=0.5.0
 SpeechRecognition>=3.10.0
 vosk>=0.3.45
 pyttsx3>=2.90
 gTTS>=2.5.0
+numpy>=1.24.0
+
+# Natural Voice (Coqui TTS)
+TTS>=0.22.0
+pydub>=0.25.1
+
+# Premium Voice (ElevenLabs)
+elevenlabs>=1.0.0
+
+# Vision & OCR
+mss>=9.0.1
+Pillow>=10.2.0
+pytesseract>=0.3.10
+easyocr>=1.7.1
+opencv-python>=4.9.0
+
+# GUI (PyQt6 preferred, PyQt5 fallback)
+PyQt6>=6.6.0
+# PyQt5>=5.15.0  # Alternative
 
 # System control
 psutil>=5.9.0
@@ -39,3 +59,4 @@ aiosqlite>=0.19.0
 pytest>=8.0.0
 pytest-asyncio>=0.23.0
 pytest-cov>=4.1.0
+

@@ -1,29 +1,81 @@
-# JARVIS AI Assistant - Docker Compose
-# =====================================
-# Run: docker-compose up -d
+# =============================================================================
+# JARVIS Distributed System - Docker Compose
+# =============================================================================
+# Complete stack for running JARVIS as a distributed system
+#
+# Usage:
+#   Full stack:    docker-compose up -d
+#   Server only:   docker-compose up -d jarvis-server ollama
+#   View logs:     docker-compose logs -f jarvis-server
 
 services:
-  jarvis:
-    build: .
-    container_name: jarvis-ai
+  # ===========================================================================
+  # JARVIS Server - Central AI Brain
+  # ===========================================================================
+  jarvis-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+    container_name: jarvis-server
     restart: unless-stopped
     ports:
-      - "8000:8000"
+      - "50051:50051" # gRPC
+      - "8000:8000" # Web Dashboard
     volumes:
       - ./config:/app/config:ro
       - ./data:/app/data
+      - ./certs:/app/certs:ro
       - ./.env:/app/.env:ro
     environment:
-      - JARVIS_LOG_LEVEL=INFO
+      - JARVIS_MODE=server
+      - JARVIS_LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - OLLAMA_HOST=http://ollama:11434
     networks:
       - jarvis-net
-    # For voice mode, uncomment the following:
-    # devices:
-    #   - /dev/snd:/dev/snd
-    # group_add:
-    #   - audio
+    depends_on:
+      - ollama
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
-  # Optional: Ollama for local LLM
+  # ===========================================================================
+  # JARVIS Client Template
+  # ===========================================================================
+  # Uncomment and customize for each client PC
+  # Or use: docker-compose run --rm jarvis-client
+  #
+  # jarvis-client:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile.client
+  #   container_name: jarvis-client-${HOSTNAME:-default}
+  #   restart: unless-stopped
+  #   volumes:
+  #     - ./certs/clients/${CLIENT_ID:-default}:/app/certs:ro
+  #     - ./config:/app/config:ro
+  #   environment:
+  #     - JARVIS_MODE=client
+  #     - JARVIS_SERVER_HOST=${SERVER_HOST:-jarvis-server}
+  #     - JARVIS_SERVER_PORT=50051
+  #     - JARVIS_CLIENT_ID=${CLIENT_ID:-default}
+  #   networks:
+  #     - jarvis-net
+  #   # For screen capture (X11)
+  #   # environment:
+  #   #   - DISPLAY=${DISPLAY:-:0}
+  #   # volumes:
+  #   #   - /tmp/.X11-unix:/tmp/.X11-unix:ro
+  #   # For audio
+  #   # devices:
+  #   #   - /dev/snd:/dev/snd
+  #   # group_add:
+  #   #   - audio
+
+  # ===========================================================================
+  # Ollama - Local LLM
+  # ===========================================================================
   ollama:
     image: ollama/ollama:latest
     container_name: jarvis-ollama
@@ -34,18 +86,66 @@ services:
       - ollama-data:/root/.ollama
     networks:
       - jarvis-net
-    # Uncomment for GPU support
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: 1
-    #           capabilities: [gpu]
+    # GPU support (NVIDIA)
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [ gpu ]
+    # For systems without GPU, comment out the deploy section above
 
+    # ===========================================================================
+    # Mosquitto - MQTT Broker for IoT
+    # ===========================================================================
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: jarvis-mqtt
+    restart: unless-stopped
+    ports:
+      - "1883:1883" # MQTT
+      - "9001:9001" # WebSocket
+    volumes:
+      - ./config/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mosquitto-data:/mosquitto/data
+      - mosquitto-log:/mosquitto/log
+    networks:
+      - jarvis-net
+  # ===========================================================================
+  # Redis (Optional) - Caching and Pub/Sub
+  # ===========================================================================
+  # redis:
+  #   image: redis:7-alpine
+  #   container_name: jarvis-redis
+  #   restart: unless-stopped
+  #   ports:
+  #     - "6379:6379"
+  #   volumes:
+  #     - redis-data:/data
+  #   networks:
+  #     - jarvis-net
+  #   command: redis-server --appendonly yes
+
+  # =============================================================================
+  # Networks
+  # =============================================================================
 networks:
   jarvis-net:
     driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
 
+# =============================================================================
+# Volumes
+# =============================================================================
 volumes:
   ollama-data:
+    name: jarvis-ollama-data
+  mosquitto-data:
+    name: jarvis-mqtt-data
+  mosquitto-log:
+    name: jarvis-mqtt-log
+  # redis-data:
+  #   name: jarvis-redis-data

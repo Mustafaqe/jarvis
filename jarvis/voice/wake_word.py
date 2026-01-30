@@ -126,68 +126,181 @@ class PorcupineDetector(WakeWordDetector):
             logger.debug("Porcupine shutdown complete")
 
 
+class VoskWakeWordDetector(WakeWordDetector):
+    """
+    Wake word detection using Vosk offline speech recognition.
+    
+    This is a safer alternative to SimpleWakeWordDetector that works offline
+    and doesn't have the threading issues that cause memory corruption.
+    """
+    
+    def __init__(self, config):
+        """Initialize Vosk detector."""
+        self.config = config
+        self.wake_words = [w.lower() for w in config.get("core.wake_words", ["jarvis"])]
+        self.model_path = config.get(
+            "voice.stt.vosk_model_path",
+            "models/vosk-model-small-en-us"
+        )
+        self._model = None
+        self._recognizer = None
+    
+    def initialize(self) -> None:
+        """Initialize Vosk model for wake word detection."""
+        try:
+            from vosk import Model, KaldiRecognizer, SetLogLevel
+            
+            # Suppress Vosk logs
+            SetLogLevel(-1)
+            
+            model_path = Path(self.model_path)
+            
+            if not model_path.exists():
+                logger.warning(f"Vosk model not found at {model_path}, falling back to audio-level detection")
+                self._model = None
+                return
+            
+            self._model = Model(str(model_path))
+            self._recognizer = KaldiRecognizer(self._model, 16000)
+            
+            logger.info(f"Vosk wake word detector initialized: {self.wake_words}")
+            
+        except ImportError:
+            logger.warning("vosk package not installed, falling back to audio-level detection")
+            self._model = None
+        except Exception as e:
+            logger.warning(f"Vosk initialization failed: {e}, falling back to audio-level detection")
+            self._model = None
+    
+    def process(self, audio_data: bytes) -> bool:
+        """Process audio looking for wake word using Vosk."""
+        # If Vosk not available, use simple audio level detection
+        if not self._recognizer:
+            return self._simple_audio_detect(audio_data)
+        
+        try:
+            import json
+            
+            # Process with Vosk
+            if self._recognizer.AcceptWaveform(audio_data):
+                result = json.loads(self._recognizer.Result())
+                text = result.get('text', '').lower()
+                
+                for wake_word in self.wake_words:
+                    if wake_word in text:
+                        logger.info(f"Wake word detected in: {text}")
+                        return True
+            else:
+                # Check partial results too
+                partial = json.loads(self._recognizer.PartialResult())
+                text = partial.get('partial', '').lower()
+                
+                for wake_word in self.wake_words:
+                    if wake_word in text:
+                        logger.info(f"Wake word detected in partial: {text}")
+                        # Reset recognizer after detection
+                        self._recognizer.Reset()
+                        return True
+                        
+        except Exception as e:
+            logger.debug(f"Vosk wake word detection error: {e}")
+        
+        return False
+    
+    def _simple_audio_detect(self, audio_data: bytes) -> bool:
+        """
+        Simple audio level detection as last resort.
+        
+        This just detects when there's significant audio activity,
+        treating any loud enough sound as a potential wake word.
+        Not recommended but works as a fallback.
+        """
+        import struct
+        
+        if len(audio_data) < 2:
+            return False
+        
+        # Calculate RMS
+        count = len(audio_data) // 2
+        shorts = struct.unpack(f'{count}h', audio_data)
+        rms = (sum(s ** 2 for s in shorts) / count) ** 0.5
+        
+        # High threshold to avoid false positives
+        threshold = 2000
+        
+        if rms > threshold:
+            logger.info(f"Audio activity detected (RMS: {rms:.0f})")
+            return True
+        
+        return False
+    
+    def shutdown(self) -> None:
+        """Cleanup resources."""
+        self._model = None
+        self._recognizer = None
+        logger.debug("Vosk wake word detector shutdown")
+
+
 class SimpleWakeWordDetector(WakeWordDetector):
     """
-    Simple wake word detection using speech recognition.
+    Simple wake word detection based on audio level.
     
-    This is a fallback when Porcupine is not available.
-    Less accurate but works offline without API keys.
+    This is a basic fallback that just detects when someone speaks.
+    For proper wake word detection, use Porcupine or VoskWakeWordDetector.
     """
     
     def __init__(self, config):
         """Initialize simple detector."""
         self.config = config
         self.wake_words = [w.lower() for w in config.get("core.wake_words", ["jarvis"])]
-        self._recognizer = None
+        self._active = False
+        self._speech_threshold = 1500  # RMS threshold for speech
+        self._speech_frames = 0
+        self._min_speech_frames = 3  # Minimum frames of speech before triggering
     
     def initialize(self) -> None:
-        """Initialize speech recognizer."""
-        try:
-            import speech_recognition as sr
-            self._recognizer = sr.Recognizer()
-            logger.info(f"Simple wake word detector initialized: {self.wake_words}")
-        except ImportError:
-            raise ImportError("speech_recognition required for SimpleWakeWordDetector")
+        """Initialize simple detector."""
+        self._active = True
+        logger.info(f"Simple wake word detector initialized (audio-level based): {self.wake_words}")
+        logger.warning("Audio-level detection is active. Say anything loudly to trigger. For better accuracy, set up Porcupine or Vosk.")
     
     def process(self, audio_data: bytes) -> bool:
-        """Process audio looking for wake word."""
-        if not self._recognizer:
+        """Process audio looking for sustained speech activity."""
+        if not self._active:
             return False
         
-        try:
-            import speech_recognition as sr
-            
-            # Create audio data object
-            audio = sr.AudioData(audio_data, sample_rate=16000, sample_width=2)
-            
-            # Try to recognize
-            try:
-                text = self._recognizer.recognize_google(audio).lower()
-                
-                for wake_word in self.wake_words:
-                    if wake_word in text:
-                        logger.info(f"Wake word detected in: {text}")
-                        return True
-                        
-            except sr.UnknownValueError:
-                pass  # No speech detected
-            except sr.RequestError as e:
-                logger.warning(f"Speech recognition error: {e}")
-                
-        except Exception as e:
-            logger.error(f"Wake word detection error: {e}")
+        import struct
+        
+        if len(audio_data) < 2:
+            return False
+        
+        # Calculate RMS
+        count = len(audio_data) // 2
+        shorts = struct.unpack(f'{count}h', audio_data)
+        rms = (sum(s ** 2 for s in shorts) / count) ** 0.5
+        
+        if rms > self._speech_threshold:
+            self._speech_frames += 1
+            if self._speech_frames >= self._min_speech_frames:
+                logger.info(f"Speech activity detected (triggering wake word)")
+                self._speech_frames = 0
+                return True
+        else:
+            self._speech_frames = 0
         
         return False
     
     def shutdown(self) -> None:
         """Cleanup resources."""
-        self._recognizer = None
+        self._active = False
         logger.debug("Simple wake word detector shutdown")
 
 
 def create_wake_word_detector(config) -> WakeWordDetector:
     """
     Factory function to create appropriate wake word detector.
+    
+    Priority: Porcupine > Vosk > Simple (audio-level)
     
     Args:
         config: Configuration object
@@ -202,8 +315,12 @@ def create_wake_word_detector(config) -> WakeWordDetector:
         if access_key:
             return PorcupineDetector(config)
         else:
-            logger.warning("Porcupine access key not set, falling back to simple detector")
-            return SimpleWakeWordDetector(config)
+            logger.warning("Porcupine access key not set, falling back to Vosk detector")
+            return VoskWakeWordDetector(config)
     
-    # Default to simple detector
-    return SimpleWakeWordDetector(config)
+    if engine == "vosk":
+        return VoskWakeWordDetector(config)
+    
+    # Default to Vosk (safer than simple, works offline)
+    return VoskWakeWordDetector(config)
+

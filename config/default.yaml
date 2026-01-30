@@ -24,7 +24,22 @@ voice:
     language: "en"
   
   tts:
-    engine: "pyttsx3"  # pyttsx3, gtts, espeak
+    engine: "coqui"  # coqui (natural), elevenlabs (premium), pyttsx3, gtts, espeak
+    voice_profile: "jarvis_classic"  # Voice profile to use
+    emotion: "neutral"  # neutral, happy, serious, excited, sad, calm
+    
+    # Coqui TTS settings (free, local)
+    coqui:
+      model: "tts_models/en/vctk/vits"  # Multi-speaker VITS model
+      speaker: "p273"  # British male speaker
+    
+    # ElevenLabs settings (requires API key)
+    elevenlabs:
+      voice_id: "21m00Tcm4TlvDq8ikWAM"  # Rachel voice
+      model: "eleven_monolingual_v1"
+      # api_key: ""  # Set in .env as ELEVENLABS_API_KEY
+    
+    # Legacy settings (pyttsx3, espeak)
     voice: null  # null for default
     rate: 175
     volume: 0.9
@@ -76,6 +91,46 @@ plugins:
     - "timer"
     - "shell"
     - "web_search"
+    - "vision_control"  # NEW: Screen capture and analysis
+
+# NEW: Vision System Configuration
+vision:
+  enabled: true
+  
+  # OCR engine: tesseract (local) or easyocr (neural network)
+  ocr_engine: "tesseract"
+  
+  # Image analysis provider (uses AI API)
+  analysis_provider: "anthropic"
+  
+  # Screen monitoring
+  monitor:
+    default_monitor: 1  # Primary monitor
+    capture_format: "PNG"
+  
+  # Window tracking
+  window_monitor:
+    track_history: true
+    max_history: 20
+
+# NEW: UI Configuration
+ui:
+  # Transparent overlay (JARVIS-style)
+  overlay:
+    enabled: true
+    theme: "jarvis"  # jarvis, friday, minimal, dark
+    position: "top-right"  # top-right, top-left, bottom-right, bottom-left, center
+    auto_hide_delay: 5000  # ms, 0 to disable auto-hide
+  
+  # System tray icon
+  tray:
+    enabled: true
+    show_notifications: true
+  
+  # Terminal animations
+  terminal:
+    show_animations: true
+    typewriter_speed: 30  # ms per character
 
 web:
   enabled: true

@@ -1,0 +1,59 @@
+# =============================================================================
+# JARVIS Client Dockerfile
+# =============================================================================
+# Lightweight client container for PC endpoints
+
+FROM python:3.12-slim
+
+LABEL maintainer="JARVIS"
+LABEL description="JARVIS AI Assistant - Client"
+
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+# Install minimal system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    # Audio
+    portaudio19-dev \
+    espeak-ng \
+    # Screen capture
+    python3-xlib \
+    scrot \
+    # Utilities
+    curl \
+    procps \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create app directory
+WORKDIR /app
+
+# Install Python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Install client-specific dependencies (lighter than server)
+RUN pip install --no-cache-dir \
+    grpcio \
+    cryptography \
+    mss \
+    pillow
+
+# Copy only necessary code for client
+COPY jarvis/network/client.py jarvis/network/
+COPY jarvis/network/__init__.py jarvis/network/
+COPY jarvis/core/config.py jarvis/core/
+COPY jarvis/core/__init__.py jarvis/core/
+COPY jarvis/vision/ jarvis/vision/
+COPY main.py .
+COPY config/default.yaml config/
+
+# Create directories
+RUN mkdir -p /app/data/logs /app/certs
+
+# Expose no ports (client connects outbound)
+
+# Default command
+CMD ["python", "main.py", "--mode", "client"]

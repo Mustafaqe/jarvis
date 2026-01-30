@@ -1,0 +1,321 @@
+// JARVIS Distributed System - gRPC Protocol Definition
+// =====================================================
+// Defines the communication protocol between JARVIS server and clients.
+
+syntax = "proto3";
+
+package jarvis;
+
+option python_generic_services = true;
+
+// =============================================================================
+// Core Messages
+// =============================================================================
+
+// Client identification and capabilities
+message ClientInfo {
+    string client_id = 1;           // Unique client identifier (UUID)
+    string hostname = 2;            // Machine hostname
+    string os_type = 3;             // Operating system (linux, windows, macos)
+    string os_version = 4;          // OS version string
+    repeated string capabilities = 5; // What this client can do
+    string ip_address = 6;          // Client's IP address
+    int64 connected_at = 7;         // Unix timestamp of connection
+}
+
+// System resource status
+message SystemStatus {
+    float cpu_percent = 1;
+    float memory_percent = 2;
+    float disk_percent = 3;
+    repeated string running_apps = 4;
+    string active_window = 5;
+    bool is_idle = 6;
+    int32 idle_seconds = 7;
+}
+
+// Authentication request
+message AuthRequest {
+    string client_id = 1;
+    string auth_token = 2;          // Pre-shared token or certificate thumbprint
+    ClientInfo client_info = 3;
+}
+
+// Authentication response
+message AuthResponse {
+    bool success = 1;
+    string session_token = 2;       // Session token for subsequent requests
+    string error_message = 3;
+    int32 heartbeat_interval = 4;   // Seconds between heartbeats
+}
+
+// Heartbeat to maintain connection
+message Heartbeat {
+    string client_id = 1;
+    string session_token = 2;
+    SystemStatus status = 3;
+    int64 timestamp = 4;
+}
+
+message HeartbeatAck {
+    bool success = 1;
+    repeated PendingCommand pending_commands = 2;  // Commands waiting for this client
+}
+
+// =============================================================================
+// Command Execution
+// =============================================================================
+
+// A command from server to client
+message Command {
+    string command_id = 1;          // Unique command identifier
+    string command_type = 2;        // Type: shell, app, file, system, voice
+    string payload = 3;             // JSON payload with command details
+    int32 priority = 4;             // 0=normal, 1=high, 2=urgent
+    int32 timeout_seconds = 5;      // Max execution time
+    bool require_confirmation = 6;  // User must confirm before execution
+}
+
+// Pending command for client
+message PendingCommand {
+    Command command = 1;
+    int64 queued_at = 2;
+}
+
+// Command execution result
+message CommandResult {
+    string command_id = 1;
+    bool success = 2;
+    string output = 3;              // Command output/result
+    string error = 4;               // Error message if failed
+    int32 exit_code = 5;
+    int64 executed_at = 6;
+    int64 duration_ms = 7;
+}
+
+// Execute command request (server to client)
+message ExecuteRequest {
+    string session_token = 1;
+    Command command = 2;
+}
+
+message ExecuteResponse {
+    bool accepted = 1;
+    string error = 2;
+}
+
+// =============================================================================
+// Screen Capture
+// =============================================================================
+
+// Request for screen capture
+message ScreenCaptureRequest {
+    string session_token = 1;
+    int32 monitor = 2;              // Monitor index, -1 for all
+    int32 quality = 3;              // JPEG quality 1-100
+    bool include_cursor = 4;
+}
+
+// Screen capture data
+message ScreenCapture {
+    string client_id = 1;
+    int32 monitor = 2;
+    bytes image_data = 3;           // JPEG or PNG encoded
+    string format = 4;              // "jpeg" or "png"
+    int32 width = 5;
+    int32 height = 6;
+    int64 captured_at = 7;
+}
+
+// Stream screen request (for continuous streaming)
+message ScreenStreamRequest {
+    string session_token = 1;
+    int32 monitor = 2;
+    int32 fps = 3;                  // Target frames per second (1-30)
+    int32 quality = 4;
+}
+
+// =============================================================================
+// File Transfer
+// =============================================================================
+
+// File transfer request
+message FileTransferRequest {
+    string session_token = 1;
+    string operation = 2;           // "upload", "download", "list", "delete"
+    string path = 3;
+    bytes data = 4;                 // For upload
+    int64 offset = 5;               // For resumable transfers
+    int64 chunk_size = 6;
+}
+
+message FileTransferResponse {
+    bool success = 1;
+    string error = 2;
+    bytes data = 3;                 // For download
+    repeated FileInfo files = 4;    // For list
+    int64 total_size = 5;
+    int64 transferred = 6;
+}
+
+message FileInfo {
+    string name = 1;
+    string path = 2;
+    int64 size = 3;
+    bool is_directory = 4;
+    int64 modified_at = 5;
+    string permissions = 6;
+}
+
+// =============================================================================
+// Voice/Audio
+// =============================================================================
+
+// Audio stream chunk (for voice forwarding)
+message AudioChunk {
+    string client_id = 1;
+    bytes audio_data = 2;           // PCM audio data
+    int32 sample_rate = 3;
+    int32 channels = 4;
+    int64 timestamp = 5;
+}
+
+// Text-to-speech request (server to client)
+message SpeakRequest {
+    string session_token = 1;
+    string text = 2;
+    string voice = 3;               // Voice profile
+    float speed = 4;
+    float volume = 5;
+}
+
+message SpeakResponse {
+    bool success = 1;
+    string error = 2;
+}
+
+// =============================================================================
+// Context & State
+// =============================================================================
+
+// Full client context for AI
+message ClientContext {
+    string client_id = 1;
+    SystemStatus system_status = 2;
+    string active_window_title = 3;
+    string active_app = 4;
+    repeated string recent_apps = 5;
+    string clipboard_text = 6;      // Optional, if allowed
+    bytes screen_thumbnail = 7;     // Low-res screen preview
+    string detected_activity = 8;   // What user appears to be doing
+}
+
+// Aggregated context from all clients
+message GlobalContext {
+    repeated ClientContext clients = 1;
+    repeated DeviceInfo network_devices = 2;
+    repeated IoTDeviceState iot_states = 3;
+    int64 timestamp = 4;
+}
+
+// =============================================================================
+// Network & IoT
+// =============================================================================
+
+// Network device information
+message DeviceInfo {
+    string mac_address = 1;
+    string ip_address = 2;
+    string hostname = 3;
+    string device_type = 4;         // pc, phone, iot, router, etc.
+    bool is_online = 5;
+    int64 last_seen = 6;
+}
+
+// IoT device state
+message IoTDeviceState {
+    string device_id = 1;
+    string device_type = 2;         // light, switch, sensor, etc.
+    string name = 3;
+    string state = 4;               // JSON state object
+    bool is_online = 5;
+    int64 last_update = 6;
+}
+
+// IoT control command
+message IoTCommand {
+    string device_id = 1;
+    string action = 2;              // on, off, set, toggle, etc.
+    string parameters = 3;          // JSON parameters
+}
+
+message IoTCommandResult {
+    bool success = 1;
+    string error = 2;
+    string new_state = 3;
+}
+
+// =============================================================================
+// Service Definitions
+// =============================================================================
+
+// Main JARVIS service
+service JarvisService {
+    // Authentication
+    rpc Authenticate(AuthRequest) returns (AuthResponse);
+    
+    // Connection management
+    rpc SendHeartbeat(Heartbeat) returns (HeartbeatAck);
+    rpc Disconnect(DisconnectRequest) returns (DisconnectResponse);
+    
+    // Command execution
+    rpc ExecuteCommand(ExecuteRequest) returns (ExecuteResponse);
+    rpc ReportResult(CommandResult) returns (ResultAck);
+    
+    // Screen capture
+    rpc CaptureScreen(ScreenCaptureRequest) returns (ScreenCapture);
+    rpc StreamScreen(ScreenStreamRequest) returns (stream ScreenCapture);
+    
+    // File operations
+    rpc TransferFile(stream FileTransferRequest) returns (stream FileTransferResponse);
+    
+    // Voice/Audio
+    rpc StreamAudio(stream AudioChunk) returns (stream AudioChunk);
+    rpc Speak(SpeakRequest) returns (SpeakResponse);
+    
+    // Context
+    rpc ReportContext(ClientContext) returns (ContextAck);
+    rpc GetGlobalContext(ContextRequest) returns (GlobalContext);
+    
+    // IoT
+    rpc ControlIoT(IoTCommand) returns (IoTCommandResult);
+    rpc GetIoTStates(IoTStatesRequest) returns (stream IoTDeviceState);
+}
+
+// Simple acknowledgment messages
+message DisconnectRequest {
+    string session_token = 1;
+    string reason = 2;
+}
+
+message DisconnectResponse {
+    bool success = 1;
+}
+
+message ResultAck {
+    bool received = 1;
+}
+
+message ContextAck {
+    bool received = 1;
+}
+
+message ContextRequest {
+    string session_token = 1;
+    bool include_screens = 2;
+}
+
+message IoTStatesRequest {
+    string session_token = 1;
+    repeated string device_ids = 2;  // Empty for all
+}
