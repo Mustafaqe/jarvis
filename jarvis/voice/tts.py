@@ -275,14 +275,112 @@ class EspeakTTS(TTSEngine):
         pass
 
 
+class PiperTTS(TTSEngine):
+    """Text-to-speech using Piper (fast, high-quality, offline neural TTS)."""
+    
+    def __init__(self, config):
+        """Initialize Piper TTS."""
+        self.config = config
+        
+        # Find piper binary
+        base_path = Path(__file__).parent.parent.parent / "models" / "piper"
+        self.piper_path = base_path / "piper" / "piper"
+        self.model_path = base_path / config.get("voice.tts.piper_model", "en_GB-alan-low.onnx")
+        
+        if not self.piper_path.exists():
+            raise FileNotFoundError(f"Piper binary not found at {self.piper_path}")
+        if not self.model_path.exists():
+            raise FileNotFoundError(f"Piper model not found at {self.model_path}")
+        
+        logger.info(f"Using Piper TTS with model: {self.model_path.name}")
+    
+    async def speak(self, text: str) -> None:
+        """Speak text using Piper."""
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, self._speak_sync, text)
+    
+    def _speak_sync(self, text: str) -> None:
+        """Synchronous speech."""
+        try:
+            import subprocess
+            
+            # Generate audio with piper and pipe to aplay
+            piper_env = {
+                "LD_LIBRARY_PATH": str(self.piper_path.parent),
+            }
+            piper_env.update(__import__('os').environ)
+            
+            # Run piper and play directly
+            piper_proc = subprocess.Popen(
+                [str(self.piper_path), "--model", str(self.model_path), "--output-raw"],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                env=piper_env,
+            )
+            
+            aplay_proc = subprocess.Popen(
+                ["aplay", "-r", "22050", "-f", "S16_LE", "-t", "raw", "-"],
+                stdin=piper_proc.stdout,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            
+            piper_proc.stdin.write(text.encode())
+            piper_proc.stdin.close()
+            aplay_proc.wait(timeout=30)
+            piper_proc.wait(timeout=5)
+            
+            logger.debug(f"Piper spoke: {text[:50]}...")
+            
+        except FileNotFoundError as e:
+            logger.error(f"Piper not found: {e}")
+        except Exception as e:
+            logger.error(f"Piper TTS error: {e}")
+    
+    async def synthesize(self, text: str) -> bytes:
+        """Synthesize text to audio bytes."""
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, self._synthesize_sync, text)
+    
+    def _synthesize_sync(self, text: str) -> bytes:
+        """Synchronous synthesis."""
+        try:
+            import subprocess
+            
+            piper_env = {
+                "LD_LIBRARY_PATH": str(self.piper_path.parent),
+            }
+            piper_env.update(__import__('os').environ)
+            
+            result = subprocess.run(
+                [str(self.piper_path), "--model", str(self.model_path), "--output-raw"],
+                input=text.encode(),
+                capture_output=True,
+                timeout=30,
+                env=piper_env,
+            )
+            
+            return result.stdout
+            
+        except Exception as e:
+            logger.error(f"Piper synthesis error: {e}")
+            return b''
+    
+    def shutdown(self) -> None:
+        """Cleanup resources."""
+        pass
+
+
 def create_tts_engine(config) -> TTSEngine:
     """
     Factory function to create appropriate TTS engine.
     
     Supports:
-    - espeak: Offline, Linux (recommended for Python 3.12+)
+    - piper: High-quality neural TTS, offline (recommended)
+    - espeak: Offline, Linux (lightweight fallback)
     - pyttsx3: Offline, cross-platform
-    - coqui: Natural voice with VITS/XTTS models (free, local, Python <3.12)
+    - coqui: Natural voice with VITS/XTTS models (Python <3.12 only)
     - elevenlabs: Premium voice quality (requires API key)
     - gtts: Google TTS online
     
@@ -292,10 +390,18 @@ def create_tts_engine(config) -> TTSEngine:
     Returns:
         TTSEngine instance
     """
-    engine = config.get("voice.tts.engine", "espeak")
+    engine = config.get("voice.tts.engine", "piper")
     
-    # Offline engines (recommended)
-    if engine == "espeak":
+    # High-quality offline (recommended)
+    if engine == "piper":
+        try:
+            return PiperTTS(config)
+        except FileNotFoundError as e:
+            logger.warning(f"Piper not available: {e}, falling back to espeak")
+            return EspeakTTS(config)
+    
+    # Basic offline engines
+    elif engine == "espeak":
         return EspeakTTS(config)
     
     elif engine == "pyttsx3":
@@ -322,7 +428,9 @@ def create_tts_engine(config) -> TTSEngine:
     elif engine == "gtts":
         return GTTS_TTS(config)
     
-    # Default to espeak (most reliable offline)
-    logger.warning(f"Unknown TTS engine '{engine}', using espeak")
-    return EspeakTTS(config)
-
+    # Default to Piper with fallback to espeak
+    try:
+        return PiperTTS(config)
+    except FileNotFoundError:
+        logger.warning(f"Unknown TTS engine '{engine}', using espeak")
+        return EspeakTTS(config)

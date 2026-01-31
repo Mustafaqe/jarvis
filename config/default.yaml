@@ -24,7 +24,8 @@ voice:
     language: "en"
   
   tts:
-    engine: "espeak"  # espeak (offline), pyttsx3 (offline), coqui (natural), gtts (online)
+    engine: "piper"  # piper (neural), espeak (basic), pyttsx3, coqui (Python<3.12), gtts
+    piper_model: "en_GB-alan-low.onnx"  # Alan British male voice
     voice_profile: "jarvis_classic"  # Voice profile to use
     emotion: "neutral"  # neutral, happy, serious, excited, sad, calm
     
