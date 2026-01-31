@@ -18,13 +18,13 @@ voice:
     porcupine_access_key: ""  # Get from https://console.picovoice.ai/
   
   stt:
-    engine: "google"  # whisper, vosk, google
-    whisper_model: "whisper-1"
+    engine: "whisper"  # whisper (offline), vosk (offline), google (online)
+    whisper_model: "base"  # tiny, base, small, medium, large
     vosk_model_path: "models/vosk-model-small-en-us"
     language: "en"
   
   tts:
-    engine: "coqui"  # coqui (natural), elevenlabs (premium), pyttsx3, gtts, espeak
+    engine: "espeak"  # espeak (offline), pyttsx3 (offline), coqui (natural), gtts (online)
     voice_profile: "jarvis_classic"  # Voice profile to use
     emotion: "neutral"  # neutral, happy, serious, excited, sad, calm
     

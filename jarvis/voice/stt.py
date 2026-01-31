@@ -211,18 +211,103 @@ def create_stt_engine(config) -> STTEngine:
     Returns:
         STTEngine instance
     """
-    engine = config.get("voice.stt.engine", "google")
+    engine = config.get("voice.stt.engine", "whisper")
     
     if engine == "whisper":
-        api_key = config.get("ai.llm.openai_api_key")
-        if api_key:
-            return WhisperSTT(config)
-        else:
-            logger.warning("OpenAI API key not set, falling back to Google STT")
-            return GoogleSTT(config)
+        # Try local Whisper first (offline)
+        try:
+            return LocalWhisperSTT(config)
+        except ImportError:
+            logger.warning("Local Whisper not available, trying API")
+            api_key = config.get("ai.llm.openai_api_key")
+            if api_key:
+                return WhisperSTT(config)
+            else:
+                logger.warning("No OpenAI API key, falling back to Google STT")
+                return GoogleSTT(config)
     
     if engine == "vosk":
         return VoskSTT(config)
     
-    # Default to Google (free, online)
-    return GoogleSTT(config)
+    if engine == "google":
+        return GoogleSTT(config)
+    
+    # Default to local Whisper with fallbacks
+    try:
+        return LocalWhisperSTT(config)
+    except ImportError:
+        return GoogleSTT(config)
+
+
+class LocalWhisperSTT(STTEngine):
+    """Offline speech-to-text using OpenAI Whisper (local model)."""
+    
+    def __init__(self, config):
+        """
+        Initialize local Whisper STT.
+        
+        Args:
+            config: Configuration object
+        """
+        import whisper  # Will raise ImportError if not installed
+        
+        self.config = config
+        self.model_name = config.get("voice.stt.whisper_model", "base")
+        self.language = config.get("voice.stt.language", "en")
+        self._model = None
+        logger.info(f"Using local Whisper model: {self.model_name}")
+    
+    def _ensure_model(self):
+        """Load Whisper model lazily."""
+        if self._model is None:
+            import whisper
+            logger.info(f"Loading Whisper {self.model_name} model (this may take a moment)...")
+            self._model = whisper.load_model(self.model_name)
+            logger.info("Whisper model loaded")
+        return self._model
+    
+    async def transcribe(self, audio_data: bytes) -> str:
+        """Transcribe audio using local Whisper."""
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, self._transcribe_sync, audio_data)
+    
+    def _transcribe_sync(self, audio_data: bytes) -> str:
+        """Synchronous transcription."""
+        try:
+            import tempfile
+            import numpy as np
+            
+            model = self._ensure_model()
+            
+            # Save audio to temp file
+            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+                temp_path = f.name
+                
+                with wave.open(f, 'wb') as wf:
+                    wf.setnchannels(1)
+                    wf.setsampwidth(2)
+                    wf.setframerate(16000)
+                    wf.writeframes(audio_data)
+            
+            # Transcribe
+            result = model.transcribe(
+                temp_path,
+                language=self.language[:2],  # Just language code
+                fp16=False,  # Disable FP16 for CPU
+            )
+            
+            # Cleanup
+            Path(temp_path).unlink(missing_ok=True)
+            
+            text = result["text"].strip()
+            logger.info(f"Whisper (local) transcription: {text}")
+            return text
+            
+        except Exception as e:
+            logger.error(f"Local Whisper transcription error: {e}")
+            return ""
+    
+    def shutdown(self) -> None:
+        """Cleanup resources."""
+        self._model = None
+
